@@ -8,33 +8,119 @@ function Square({ value, onSquareClick }) {
   );
 }
 
-/** Attempts to find the best move for the specified squares/board. */
-function findBestMove(squares, player) {
-  // 1. If this player can force a win, choose that
-  let move = winningMove(squares, player);
-  if (move != null) return move;
-
-  // 2. If the other player is about to win, block it
-  const otherPlayer = (player === "X") ? "O" : "X";
-  move = winningMove(squares, otherPlayer);
-  if (move != null) return move;
-
-  // 3. Otherwise, pick the first available square in priority:
-  const moveOrder = [4, 0, 2, 6, 8, 1, 3, 5, 7];
-  for (const idx of moveOrder) {
-    if (!squares[idx]) {
-      return idx;
+/**
+ * Returns "X" or "O" if there's a winner, otherwise null. 
+ */
+function checkWinner(board) {
+  // Simple loop-based approach for clarity:
+  const lines = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+    [0, 4, 8], [2, 4, 6],
+  ];
+  for (let [a, b, c] of lines) {
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+      return board[a];
     }
   }
-
-  // If no squares are left
   return null;
+}
+
+/**
+ * Minimax function:
+ * - board: current array of 9 elements: "X", "O", or null
+ * - depth: the current level in the game tree
+ * - isMaximizing: true if we are computing the move for "X" (the maximizing player)
+ *
+ * Returns an integer score: +10 (X win), -10 (O win), 0 (draw), 
+ * or an intermediate score if the game isn't done yet.
+ */
+function minimax(board, depth, isMaximizing) {
+  const winner = checkWinner(board);
+  if (winner === "X") {
+    return 10;
+  } else if (winner === "O") {
+    return -10;
+  }
+
+  // If no winner but board is full => draw
+  if (!board.includes(null)) {
+    return 0;
+  }
+
+  // If it's the maximizing player's turn ("X")
+  if (isMaximizing) {
+    let bestScore = -Infinity;
+    for (let i = 0; i < board.length; i++) {
+      if (!board[i]) {
+        // Try placing "X" here
+        board[i] = "X";
+        const score = minimax(board, depth + 1, false);
+        board[i] = null; // undo move
+        bestScore = Math.max(score, bestScore);
+      }
+    }
+    return bestScore;
+  }
+  // Otherwise, the minimizing player's turn ("O")
+  else {
+    let bestScore = Infinity;
+    for (let i = 0; i < board.length; i++) {
+      if (!board[i]) {
+        board[i] = "O";
+        const score = minimax(board, depth + 1, true);
+        board[i] = null; // undo
+        bestScore = Math.min(score, bestScore);
+      }
+    }
+    return bestScore;
+  }
+}
+
+/**
+ * findBestMove: 
+ *   - board: the current squares array of size 9
+ *   - currentPlayer: "X" or "O" indicating who is about to move
+ *
+ * Returns the index (0..8) of the optimal move for currentPlayer.
+ * If no moves are available, returns null.
+ */
+function findBestMove(board, currentPlayer) {
+  let bestVal = (currentPlayer === "X") ? -Infinity : Infinity;
+  let bestMove = null;
+
+  for (let i = 0; i < board.length; i++) {
+    if (!board[i]) {
+      board[i] = currentPlayer;
+
+      // Call minimax:
+      // If the current player is "X" => isMaximizing = true
+      // If the current player is "O" => isMaximizing = false
+      const score = minimax(board, 0, (currentPlayer === "X"));
+
+      board[i] = null;
+
+      // Update bestVal/bestMove for "X" (max) or "O" (min)
+      if (currentPlayer === "X") {
+        if (score > bestVal) {
+          bestVal = score;
+          bestMove = i;
+        }
+      } else {
+        if (score < bestVal) {
+          bestVal = score;
+          bestMove = i;
+        }
+      }
+    }
+  }
+  return bestMove;
 }
 
 /**
  * Returns the index of a winning move for `player` (X or O) if one exists,
  * or null otherwise.
- */
+ *//*
 function winningMove(squares, player) {
   for (let i = 0; i < squares.length; i++) {
     if (!squares[i]) {
@@ -47,7 +133,7 @@ function winningMove(squares, player) {
     }
   }
   return null;
-}
+}*/
 
 /** Returns "X" or "O" if there's a winner, or null if none. */
 function calculateWinner(squares) {
@@ -65,16 +151,16 @@ function calculateWinner(squares) {
 
 /** Board component: Renders the 3x3 grid and handles the HUMAN's turn. */
 function Board({ squares, xIsNext, humanPlayer, onPlay }) {
-  function handleClick(i) {
-    // If there's a winner or the cell is occupied, ignore.
-    if (calculateWinner(squares) || squares[i]) {
-      return;
-    }
+  const winner = checkWinner(squares);
 
-    // Figure out which player is about to move:
+  function handleClick(i) {
+    // If there's a winner or that cell is taken, ignore
+    if (winner || squares[i]) return;
+
+    // Figure out who is about to move: X or O
     const currentPlayer = xIsNext ? "X" : "O";
 
-    // If the HUMAN is controlling that player, let them move:
+    // Only allow clicks if the *human* controls this current player
     if (humanPlayer === currentPlayer) {
       const nextSquares = squares.slice();
       nextSquares[i] = currentPlayer;
@@ -82,7 +168,6 @@ function Board({ squares, xIsNext, humanPlayer, onPlay }) {
     }
   }
 
-  const winner = calculateWinner(squares);
   let status;
   if (winner) {
     status = "Winner: " + winner;
@@ -127,8 +212,9 @@ export default function Game() {
   // Auto-Play logic: If it's the computer's turn, find best move.
   useEffect(() => {
     const winner = calculateWinner(currentSquares);
+
+    // Game is over
     if (winner || !currentSquares.includes(null)) {
-      // Game is over, or no empty squares => no auto-play
       return;
     }
 
