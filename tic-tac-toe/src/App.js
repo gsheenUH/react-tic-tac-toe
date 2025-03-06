@@ -1,24 +1,25 @@
 import { useState, useEffect } from 'react';
 
-function Square({value, onSquareClick}) {
+function Square({ value, onSquareClick }) {
   return (
     <button className="square" onClick={onSquareClick}>
       {value}
     </button>
-  );    
+  );
 }
 
-function findBestMove(squares) {
-  // 1. If O can force a win right now, choose that
-  let move = winningMove(squares, "O");
+/** Attempts to find the best move for the specified squares/board. */
+function findBestMove(squares, player) {
+  // 1. If this player can force a win, choose that
+  let move = winningMove(squares, player);
   if (move != null) return move;
 
-  // 2. If X is about to win, block it
-  move = winningMove(squares, "X");
+  // 2. If the other player is about to win, block it
+  const otherPlayer = (player === "X") ? "O" : "X";
+  move = winningMove(squares, otherPlayer);
   if (move != null) return move;
 
-  // 3. Otherwise, pick the first available square 
-  //    according to the priority [4, 0, 2, 6, 8, 1, 3, 5, 7]
+  // 3. Otherwise, pick the first available square in priority:
   const moveOrder = [4, 0, 2, 6, 8, 1, 3, 5, 7];
   for (const idx of moveOrder) {
     if (!squares[idx]) {
@@ -26,50 +27,59 @@ function findBestMove(squares) {
     }
   }
 
-  // If we get here, there was no empty square
+  // If no squares are left
   return null;
 }
 
 /**
- * Helper to find a winning move for the given `player` (X or O).
- * Returns the index of a winning move if found, or null otherwise.
+ * Returns the index of a winning move for `player` (X or O) if one exists,
+ * or null otherwise.
  */
 function winningMove(squares, player) {
   for (let i = 0; i < squares.length; i++) {
     if (!squares[i]) {
-      // Temporarily place the player in this spot
-      squares[i] = player;
+      squares[i] = player;      // place a temporary move
       if (calculateWinner(squares) === player) {
-        squares[i] = null; // revert the change
-        return i;
+        squares[i] = null;     // revert
+        return i;              // winning move found
       }
-      squares[i] = null; // revert the change
+      squares[i] = null;       // revert
     }
   }
   return null;
 }
 
-function Board({ xIsNext, squares, onPlay}) {
+/** Returns "X" or "O" if there's a winner, or null if none. */
+function calculateWinner(squares) {
+  // Regex approach from your Challenge #1
+  // Matches any winning 3-in-a-row in a 9-character string.
+  const re = /^(?:(?:...){0,2}([OX])\1\1|.{0,2}([OX])..\2..\2|([OX])...\3...\3|..([OX]).\4.\4)/;
+  const boardString = squares.map((square) => (square ? square : "-")).join("");
 
-  function handleClick(i){
-    const winner = calculateWinner(squares);
+  const match = re.exec(boardString);
+  if (match) {
+    return match[1] || match[2] || match[3] || match[4];
+  }
+  return null;
+}
 
-    // If square is taken or the game is already won, ignore the click
-    if (squares[i] || winner) {
+/** Board component: Renders the 3x3 grid and handles the HUMAN's turn. */
+function Board({ squares, xIsNext, humanPlayer, onPlay }) {
+  function handleClick(i) {
+    // If there's a winner or the cell is occupied, ignore.
+    if (calculateWinner(squares) || squares[i]) {
       return;
     }
 
-    // Only let the user place X if it's X's turn
-    if (!xIsNext) {
-      return;
+    // Figure out which player is about to move:
+    const currentPlayer = xIsNext ? "X" : "O";
+
+    // If the HUMAN is controlling that player, let them move:
+    if (humanPlayer === currentPlayer) {
+      const nextSquares = squares.slice();
+      nextSquares[i] = currentPlayer;
+      onPlay(nextSquares);
     }
-
-    // Step 1) Make a fresh copy of squares for X's move
-    const nextSquaresX = squares.slice();
-    nextSquaresX[i] = "X";
-
-    // Step 2) Update state with X's move
-    onPlay(nextSquaresX);
   }
 
   const winner = calculateWinner(squares);
@@ -102,70 +112,85 @@ function Board({ xIsNext, squares, onPlay}) {
       </div>
     </>
   );
-
 }
 
-function calculateWinner(squares) {
-  const re = /^(?:(?:...){0,2}([OX])\1\1|.{0,2}([OX])..\2..\2|([OX])...\3...\3|..([OX]).\4.\4)/;
-
-  // Replace null or empty squares with '-'
-  const boardString = squares.map((square) => (square ? square : "-")).join("");
-
-  const match = re.exec(boardString);
-
-  if (match) {
-    // One of the capturing groups 1, 2, 3, or 4 will hold the "X" or "O"
-    return match[1] || match[2] || match[3] || match[4];
-  }
-
-  return null;
-}
-
-export default function Game(){
+export default function Game() {
   const [history, setHistory] = useState([Array(9).fill(null)]);
   const [currentMove, setCurrentMove] = useState(0);
-  const xIsNext = currentMove % 2 === 0;
-  const currentSquares = history[currentMove];
 
-  // Use useEffect to make O's move after X has played
+  // Which side is the human controlling? "X" or "O"
+  const [humanPlayer, setHumanPlayer] = useState("X");
+
+  const currentSquares = history[currentMove];
+  const xIsNext = (currentMove % 2 === 0);
+
+  // Auto-Play logic: If it's the computer's turn, find best move.
   useEffect(() => {
-    // Only make O's move if it's O's turn and the game isn't over
-    if (!xIsNext && !calculateWinner(currentSquares) && currentSquares.includes(null)) {
-      const nextSquaresO = currentSquares.slice();
-      const oBestIndex = findBestMove(nextSquaresO);
-      
-      if (oBestIndex !== null) {
-        nextSquaresO[oBestIndex] = "O";
-        
-        // Add a small delay so user can see X's move first
+    const winner = calculateWinner(currentSquares);
+    if (winner || !currentSquares.includes(null)) {
+      // Game is over, or no empty squares => no auto-play
+      return;
+    }
+
+    // It's X's turn, but the user is not X, then Computer should play X
+    if (xIsNext && humanPlayer !== "X") {
+      const squaresCopy = currentSquares.slice();
+      const bestIndex = findBestMove(squaresCopy, "X");
+      if (bestIndex != null) {
+        squaresCopy[bestIndex] = "X";
+        // Slight delay so user can see the move
         setTimeout(() => {
-          handlePlay(nextSquaresO);
+          handlePlay(squaresCopy);
         }, 300);
       }
     }
-  }, [xIsNext, currentSquares]);
+    // It's O's turn, but the user is not O, then Computer should play O
+    else if (!xIsNext && humanPlayer !== "O") {
+      const squaresCopy = currentSquares.slice();
+      const bestIndex = findBestMove(squaresCopy, "O");
+      if (bestIndex != null) {
+        squaresCopy[bestIndex] = "O";
+        // Slight delay so user can see the move
+        setTimeout(() => {
+          handlePlay(squaresCopy);
+        }, 300);
+      }
+    }
+  }, [xIsNext, currentSquares, humanPlayer]);
 
-  function handlePlay(nextSquares){
-    const nextHistory = [...history.slice(0, currentMove+1), nextSquares];
+  /** Called any time we want to update the board (X or O move). */
+  function handlePlay(nextSquares) {
+    const nextHistory = [...history.slice(0, currentMove + 1), nextSquares];
     setHistory(nextHistory);
     setCurrentMove(nextHistory.length - 1);
   }
 
-  function resetGame(){
+  function jumpTo(moveIndex) {
+    setCurrentMove(moveIndex);
+  }
+
+  function resetGame() {
     setHistory([Array(9).fill(null)]);
     setCurrentMove(0);
   }
 
-  function jumpTo(nextMove) {
-    setCurrentMove(nextMove);
+  // If the human was X, switch to O. If they were O, switch to X.
+  function handleSwapPlayers() {
+    setHumanPlayer((prev) => (prev === "X" ? "O" : "X"));
   }
 
-  const moves = history.map((squares, move) => {
+  const winner = calculateWinner(currentSquares);
+
+  // For the button label, show which side you'll be switching TO.
+  const switchLabel =
+    humanPlayer === "X" ? "Switch to Player O" : "Switch to Player X";
+
+  const moves = history.map((stepSquares, move) => {
     let description;
     if (move > 0) {
-      description = 'Go to move #' + move;
+      description = "Go to move #" + move;
     } else {
-      description = 'Go to game start';
+      description = "Go to game start";
     }
     return (
       <li key={move}>
@@ -177,14 +202,25 @@ export default function Game(){
   return (
     <div className="game">
       <div className="game-board">
-        <Board xIsNext={xIsNext} squares={currentSquares} onPlay={handlePlay} />
+        <Board
+          squares={currentSquares}
+          xIsNext={xIsNext}
+          humanPlayer={humanPlayer}
+          onPlay={handlePlay}
+        />
       </div>
+
       <div className="game-info">
         <ol>{moves}</ol>
-        <button onClick={resetGame} style={{ marginTop: '10px' }}>
-          Reset Game
-        </button>
+        <div>
+          <button onClick={resetGame} style={{ marginRight: "10px" }}>
+            Reset Game
+          </button>
+          <button onClick={handleSwapPlayers}>{switchLabel}</button>
+        </div>
+        {winner && <p style={{ marginTop: 15 }}>Game Over!</p>}
+        <p style={{ marginTop: 10 }}>Player is: {humanPlayer}</p>
       </div>
     </div>
-  )
+  );
 }
