@@ -83,6 +83,11 @@ export default function Game(){
     setCurrentMove(nextHistory.length - 1);
   }
 
+  function resetGame(){
+    setHistory([Array(9).fill(null)]);
+    setCurrentMove(0);
+  }
+
   function jumpTo(nextMove) {
     setCurrentMove(nextMove);
   }
@@ -108,6 +113,9 @@ export default function Game(){
       </div>
       <div className="game-info">
         <ol>{moves}</ol>
+        <button onClick={resetGame} style={{ marginTop: '10px' }}>
+          Reset Game
+        </button>
       </div>
     </div>
   )
