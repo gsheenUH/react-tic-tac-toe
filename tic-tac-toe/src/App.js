@@ -1,34 +1,35 @@
 import { useState, useEffect } from "react";
 
-function BoardSizeSelector({ initialRows = 3, initialCols = 3, onSizeChange }) {
-  const [rows, setRows] = useState(initialRows);
-  const [cols, setCols] = useState(initialCols);
+/** Let user pick rows & columns (with initial states). */
+function BoardSizeSelector({ rows, cols, onSizeChange }) {
+  const [localRows, setLocalRows] = useState(rows);
+  const [localCols, setLocalCols] = useState(cols);
 
   function handleSubmit(e) {
     e.preventDefault();
-    onSizeChange(rows, cols);
+    onSizeChange(localRows, localCols);
   }
 
   return (
     <form onSubmit={handleSubmit} style={{ marginBottom: "1rem" }}>
       <label style={{ marginRight: "10px" }}>
-        Rows: 
-        <input 
-          type="number" 
-          min="1" 
-          value={rows} 
-          onChange={(e) => setRows(Number(e.target.value))} 
-          style={{ width: "60px", marginLeft: "5px" }}
+        Rows:
+        <input
+          type="number"
+          min="1"
+          value={localRows}
+          onChange={(e) => setLocalRows(Number(e.target.value))}
+          style={{ width: "50px", marginLeft: "5px" }}
         />
       </label>
       <label style={{ marginRight: "10px" }}>
-        Columns: 
-        <input 
-          type="number" 
-          min="1" 
-          value={cols} 
-          onChange={(e) => setCols(Number(e.target.value))} 
-          style={{ width: "60px", marginLeft: "5px" }}
+        Columns:
+        <input
+          type="number"
+          min="1"
+          value={localCols}
+          onChange={(e) => setLocalCols(Number(e.target.value))}
+          style={{ width: "50px", marginLeft: "5px" }}
         />
       </label>
       <button type="submit">Set Board Size</button>
@@ -36,14 +37,15 @@ function BoardSizeSelector({ initialRows = 3, initialCols = 3, onSizeChange }) {
   );
 }
 
+/** A single square in the grid. */
 function Square({ value, onSquareClick }) {
   return (
-    <button 
-      className="square" 
-      onClick={onSquareClick} 
+    <button
+      className="square"
+      onClick={onSquareClick}
       style={{
-        width: "40px", 
-        height: "40px", 
+        width: "40px",
+        height: "40px",
         display: "inline-block",
         margin: 0,
         padding: 0,
@@ -51,7 +53,7 @@ function Square({ value, onSquareClick }) {
         verticalAlign: "top",
         border: "1px solid #999",
         fontSize: "24px",
-        fontWeight: "bold",
+        fontWeight: "bold"
       }}
     >
       {value}
@@ -59,12 +61,45 @@ function Square({ value, onSquareClick }) {
   );
 }
 
+/**
+ * Safely copies the overlap region from the old board
+ * into a new board sized newRows*newCols.
+ */
+function remapBoard(oldSquares, oldRows, oldCols, newRows, newCols) {
+  const newSquares = Array(newRows * newCols).fill(null);
+  const minRows = Math.min(oldRows, newRows);
+  const minCols = Math.min(oldCols, newCols);
+
+  // Copy overlap
+  for (let r = 0; r < minRows; r++) {
+    for (let c = 0; c < minCols; c++) {
+      const oldIndex = r * oldCols + c;
+      const newIndex = r * newCols + c;
+      newSquares[newIndex] = oldSquares[oldIndex];
+    }
+  }
+  return newSquares;
+}
+
+/**
+ * Defensive NxM winner-check:
+ * If board.length !== rows*cols, we skip the check entirely
+ * so we don't go out of bounds.
+ */
 function checkGenericWinner(board, rows, cols) {
+  // If there's a mismatch, bail out
+  if (board.length !== rows * cols) {
+    return null;
+  }
+
   const K = Math.min(rows, cols);
 
+  // Helper to safely retrieve a cell (with bounds checks)
   function getCell(r, c) {
     if (r < 0 || r >= rows || c < 0 || c >= cols) return null;
-    return board[r * cols + c];
+    const idx = r * cols + c;
+    if (idx < 0 || idx >= board.length) return null;
+    return board[idx];
   }
 
   for (let r = 0; r < rows; r++) {
@@ -72,7 +107,7 @@ function checkGenericWinner(board, rows, cols) {
       const symbol = getCell(r, c);
       if (!symbol) continue;
 
-      // Horizontal
+      // 1) Horizontal
       let count = 1;
       for (let offset = 1; offset < K; offset++) {
         if (getCell(r, c + offset) === symbol) {
@@ -81,7 +116,7 @@ function checkGenericWinner(board, rows, cols) {
       }
       if (count === K) return symbol;
 
-      // Vertical
+      // 2) Vertical
       count = 1;
       for (let offset = 1; offset < K; offset++) {
         if (getCell(r + offset, c) === symbol) {
@@ -90,7 +125,7 @@ function checkGenericWinner(board, rows, cols) {
       }
       if (count === K) return symbol;
 
-      // Diagonal down-right
+      // 3) Diagonal down-right
       count = 1;
       for (let offset = 1; offset < K; offset++) {
         if (getCell(r + offset, c + offset) === symbol) {
@@ -99,7 +134,7 @@ function checkGenericWinner(board, rows, cols) {
       }
       if (count === K) return symbol;
 
-      // Diagonal up-right
+      // 4) Diagonal up-right
       count = 1;
       for (let offset = 1; offset < K; offset++) {
         if (getCell(r - offset, c + offset) === symbol) {
@@ -109,9 +144,11 @@ function checkGenericWinner(board, rows, cols) {
       if (count === K) return symbol;
     }
   }
-  return null;
+
+  return null; // no winner
 }
 
+/** Minimax logic for NxM board. */
 function minimax(board, rows, cols, depth, isMaximizing) {
   const winner = checkGenericWinner(board, rows, cols);
   if (winner === "X") return 10;
@@ -125,7 +162,7 @@ function minimax(board, rows, cols, depth, isMaximizing) {
         board[i] = "X";
         const score = minimax(board, rows, cols, depth + 1, false);
         board[i] = null;
-        bestScore = Math.max(score, bestScore);
+        bestScore = Math.max(bestScore, score);
       }
     }
     return bestScore;
@@ -136,7 +173,7 @@ function minimax(board, rows, cols, depth, isMaximizing) {
         board[i] = "O";
         const score = minimax(board, rows, cols, depth + 1, true);
         board[i] = null;
-        bestScore = Math.min(score, bestScore);
+        bestScore = Math.min(bestScore, score);
       }
     }
     return bestScore;
@@ -151,11 +188,11 @@ function findBestMove(board, rows, cols, currentPlayer) {
     if (!board[i]) {
       board[i] = currentPlayer;
       const score = minimax(
-        board, 
-        rows, 
-        cols, 
-        0, 
-        currentPlayer === "X" // isMaximizing?
+        board,
+        rows,
+        cols,
+        0,
+        currentPlayer === "X" // isMaximizing
       );
       board[i] = null;
 
@@ -175,11 +212,14 @@ function findBestMove(board, rows, cols, currentPlayer) {
   return bestMove;
 }
 
+/** A generalized board that renders rows*cols squares. */
 function Board({ board, rows, cols, xIsNext, humanPlayer, onPlay, winner }) {
   function handleClick(index) {
-    if (winner || board[index]) return; // ignore if game over or cell taken
+    // If there's a winner or the cell is taken, ignore
+    if (winner || board[index]) return;
 
     const currentPlayer = xIsNext ? "X" : "O";
+    // Only let the human player for that side click
     if (humanPlayer === currentPlayer) {
       const nextBoard = board.slice();
       nextBoard[index] = currentPlayer;
@@ -196,22 +236,21 @@ function Board({ board, rows, cols, xIsNext, humanPlayer, onPlay, winner }) {
     status = "Next player: " + (xIsNext ? "X" : "O");
   }
 
-  // Render NxM
   const rowsArray = [];
   for (let r = 0; r < rows; r++) {
     const colsArray = [];
     for (let c = 0; c < cols; c++) {
       const index = r * cols + c;
       colsArray.push(
-        <Square 
-          key={index} 
-          value={board[index]} 
-          onSquareClick={() => handleClick(index)} 
+        <Square
+          key={index}
+          value={board[index]}
+          onSquareClick={() => handleClick(index)}
         />
       );
     }
     rowsArray.push(
-      <div key={r} className="board-row" style={{ lineHeight: "0" }}>
+      <div key={r} style={{ lineHeight: "0" }}>
         {colsArray}
       </div>
     );
@@ -219,127 +258,114 @@ function Board({ board, rows, cols, xIsNext, humanPlayer, onPlay, winner }) {
 
   return (
     <>
-      <div className="status" style={{ marginBottom: "10px" }}>
-        {status}
-      </div>
+      <div style={{ marginBottom: "10px" }}>{status}</div>
       {rowsArray}
     </>
   );
 }
 
+/** Main Game component that can change board size mid-play. */
 export default function Game() {
-  // Rows & cols stored in state so user can switch
   const [rows, setRows] = useState(3);
   const [cols, setCols] = useState(3);
 
-  // Build an initial empty board of size rows*cols
-  const [history, setHistory] = useState([Array(rows * cols).fill(null)]);
-  const [currentMove, setCurrentMove] = useState(0);
+  // We store just a single-board "history" for simplicity.
+  const [board, setBoard] = useState(() => Array(3 * 3).fill(null));
 
-  // Track which player the user is controlling
+  // Keep track of how many moves have been made to determine xIsNext
+  const [moveCount, setMoveCount] = useState(0);
+
+  // Which side does the human control?
   const [humanPlayer, setHumanPlayer] = useState("X");
 
-  // Re-build the board whenever the user changes board size
-  // You might want to reset the game as well
-  function handleSizeChange(newRows, newCols) {
-    setRows(newRows);
-    setCols(newCols);
-    // Reset everything for the new board dimension
-    setHistory([Array(newRows * newCols).fill(null)]);
-    setCurrentMove(0);
-    setHumanPlayer("X"); // Optional: revert to X by default
-  }
+  // Let's see who the next player is
+  const xIsNext = (moveCount % 2 === 0);
 
-  const currentBoard = history[currentMove];
-  const xIsNext = (currentMove % 2 === 0);
+  // Check for a winner with defensive logic
+  const winner = checkGenericWinner(board, rows, cols);
 
-  // If we have a winner, store it
-  const winner = checkGenericWinner(currentBoard, rows, cols);
-
-  // useEffect: if it's AI's turn, compute best move with minimax
+  // If it's the AI's turn, run findBestMove
   useEffect(() => {
-    if (winner || !currentBoard.includes(null)) return; // game done
+    if (winner || !board.includes(null)) return; // game done
 
     const currentPlayer = xIsNext ? "X" : "O";
     if (humanPlayer !== currentPlayer) {
-      // AI turn
-      const boardCopy = currentBoard.slice();
+      // AI plays
+      const boardCopy = board.slice();
       const bestIndex = findBestMove(boardCopy, rows, cols, currentPlayer);
       if (bestIndex != null) {
         boardCopy[bestIndex] = currentPlayer;
+        // Give a short delay so we see the change
         setTimeout(() => {
-          handlePlay(boardCopy);
+          handleMove(boardCopy);
         }, 300);
       }
     }
-  }, [xIsNext, currentBoard, humanPlayer, winner, rows, cols]);
+  }, [xIsNext, board, humanPlayer, rows, cols, winner]);
 
-  function handlePlay(nextBoard) {
-    const nextHistory = [...history.slice(0, currentMove + 1), nextBoard];
-    setHistory(nextHistory);
-    setCurrentMove(nextHistory.length - 1);
+  /** Called whenever we want to update the board (human or AI). */
+  function handleMove(nextBoard) {
+    setBoard(nextBoard);
+    setMoveCount(moveCount + 1);
   }
 
-  function jumpTo(moveIdx) {
-    setCurrentMove(moveIdx);
+  /** Called when the user changes the board size mid-play. */
+  function handleSizeChange(newRows, newCols) {
+    // 1) Create a new board from the old board using remapBoard
+    const newSquares = remapBoard(board, rows, cols, newRows, newCols);
+
+    // 2) Update rows, cols, board, but keep the same moveCount
+    //    so that X vs O turn doesn't break
+    setRows(newRows);
+    setCols(newCols);
+    setBoard(newSquares);
   }
 
+  /** Reset the board entirely */
   function resetGame() {
-    setHistory([Array(rows * cols).fill(null)]);
-    setCurrentMove(0);
+    setBoard(Array(rows * cols).fill(null));
+    setMoveCount(0);
   }
 
   function handleSwapPlayers() {
-    setHumanPlayer(prev => (prev === "X" ? "O" : "X"));
+    setHumanPlayer((prev) => (prev === "X" ? "O" : "X"));
   }
 
-  const switchLabel = humanPlayer === "X" ? "Switch to Player O" : "Switch to Player X";
-
-  const moves = history.map((stepBoard, moveIdx) => {
-    const desc = moveIdx > 0 ? "Go to move #" + moveIdx : "Go to game start";
-    return (
-      <li key={moveIdx}>
-        <button onClick={() => jumpTo(moveIdx)}>{desc}</button>
-      </li>
-    );
-  });
+  const switchLabel =
+    humanPlayer === "X" ? "Switch to Player O" : "Switch to Player X";
 
   return (
     <div style={{ margin: "20px" }}>
-      {/* 1) BoardSizeSelector at top */}
-      <BoardSizeSelector onSizeChange={handleSizeChange} />
+      <BoardSizeSelector
+        rows={rows}
+        cols={cols}
+        onSizeChange={handleSizeChange}
+      />
 
-      <div className="game" style={{ display: "flex", flexDirection: "row" }}>
-        <div className="game-board" style={{ marginRight: "20px" }}>
+      <div style={{ display: "flex", gap: "20px" }}>
+        <div>
           <Board
-            board={currentBoard}
+            board={board}
             rows={rows}
             cols={cols}
             xIsNext={xIsNext}
             humanPlayer={humanPlayer}
-            onPlay={handlePlay}
+            onPlay={handleMove}
             winner={winner}
           />
         </div>
 
-        <div className="game-info">
-          <ol>{moves}</ol>
-          <div style={{ marginTop: "10px" }}>
+        <div>
+          <div style={{ marginBottom: "10px" }}>
             <button onClick={resetGame} style={{ marginRight: "10px" }}>
               Reset Game
             </button>
-            <button onClick={handleSwapPlayers}>
-              {switchLabel}
-            </button>
+            <button onClick={handleSwapPlayers}>{switchLabel}</button>
           </div>
-          {winner && <p style={{ marginTop: "15px" }}>Game Over!</p>}
-          <p style={{ marginTop: "10px" }}>
-            Human is currently: <strong>{humanPlayer}</strong>
-          </p>
-          <p>Rows: {rows}, Columns: {cols}</p>
-          <p>
-            Note: It takes some time to load the first move for any board larger than 3x3
-          </p>
+          {winner && <p>Game Over!</p>}
+          <p>Human is: {humanPlayer}</p>
+          <p>Rows: {rows}, Cols: {cols}</p>
+          <p>Move count: {moveCount}</p>
         </div>
       </div>
     </div>
